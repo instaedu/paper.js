@@ -35,13 +35,13 @@ var Rectangle = Base.extend(/** @lends Rectangle# */{
 	 * @name Rectangle#initialize
 	 * @param {Object} object an object containing properties to be set on the
 	 *        rectangle.
-	 * 
+	 *
 	 * @example // Create a rectangle between {x: 20, y: 20} and {x: 80, y:80}
 	 * var rectangle = new Rectangle({
 	 * 	point: [20, 20],
 	 * 	size: [60, 60]
 	 * });
-	 * 
+	 *
 	 * @example // Create a rectangle between {x: 20, y: 20} and {x: 80, y:80}
 	 * var rectangle = new Rectangle({
 	 * 	from: [20, 20],
@@ -774,6 +774,37 @@ var Rectangle = Base.extend(/** @lends Rectangle# */{
 	scale: function(hor, ver) {
 		return this.expand(this.width * hor - this.width,
 				this.height * (ver === undefined ? hor : ver) - this.height);
+	},
+
+	hitEdge: function(point, options) {
+		var tolerance = options.tolerance || 0,
+			rightX = this.x + this.width,
+			bottomY = this.y + this.height,
+			insideWidth = point.x >= this.x && point.x <= rightX,
+			insideHeight = point.y >= this.y && point.y <= bottomY;
+
+		if (tolerance > 0) {
+			var topRange = (point.y >= this.y - tolerance && point.y <= this.y + tolerance && insideWidth),
+				rightRange = (point.x >= rightX - tolerance && point.x <= rightX + tolerance && insideHeight),
+				bottomRange = (point.y >= bottomY - tolerance && point.y <= bottomY + tolerance && insideWidth),
+				leftRange = (point.x >= this.x - tolerance && point.x <= this.x + tolerance && insideHeight);
+
+			if (topRange && leftRange) return 'top-left';
+			if (topRange && rightRange) return 'top-right';
+			if (topRange) return 'top';
+			if (bottomRange && leftRange) return 'bottom-left';
+			if (bottomRange && rightRange) return 'bottom-right';
+			if (bottomRange) return 'bottom';
+			if (rightRange) return 'right';
+			if (leftRange) return 'left';
+		} else {
+			if (point.y == this.y && insideWidth) return 'top';
+			if (point.x == rightX && insideHeight) return 'right';
+			if (point.y == bottomY && insideWidth) return 'bottom';
+			if (point.x == this.x && insideHeight) return 'left';
+		}
+
+		return null;
 	}
 }, new function() {
 	return Base.each([
@@ -893,7 +924,7 @@ var LinkedRectangle = Rectangle.extend({
 				if (owner.setSelected) {
 					owner._boundsSelected = selected;
 					// Update the owner's selected state too, so the bounds
-					// actually get drawn. When deselecting, take a path's  
+					// actually get drawn. When deselecting, take a path's
 					// _selectedSegmentState into account too, since it will
 					// have to remain selected even when bounds are deselected
 					owner.setSelected(selected || owner._selectedSegmentState > 0);

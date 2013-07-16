@@ -63,12 +63,12 @@ var Segment = Base.extend(/** @lends Segment# */{
 	 * 	point: [100, 50],
 	 * 	handleOut: [80, 100]
 	 * });
-	 * 
+	 *
 	 * var secondSegment = new Segment({
 	 * 	point: [300, 50],
 	 * 	handleIn: [-80, -100]
 	 * });
-	 * 
+	 *
 	 * var path = new Path({
 	 * 	segments: [firstSegment, secondSegment],
 	 * 	strokeColor: 'black'
@@ -97,15 +97,15 @@ var Segment = Base.extend(/** @lends Segment# */{
 	 * var inY = -100;
 	 * var outX = 80;
 	 * var outY = 100;
-	 * 
+	 *
 	 * var x = 100;
 	 * var y = 50;
 	 * var firstSegment = new Segment(x, y, inX, inY, outX, outY);
-	 * 
+	 *
 	 * var x2 = 300;
 	 * var y2 = 50;
 	 * var secondSegment = new Segment( x2, y2, inX, inY, outX, outY);
-	 * 
+	 *
 	 * var path = new Path(firstSegment, secondSegment);
 	 * path.strokeColor = 'black';
 	 * @ignore
@@ -312,7 +312,7 @@ var Segment = Base.extend(/** @lends Segment# */{
 	 * 	center: [80, 50],
 	 * 	radius: 40
 	 * });
-	 * 
+	 *
 	 * // Select the third segment point:
 	 * path.segments[2].selected = true;
 	 */
@@ -322,6 +322,23 @@ var Segment = Base.extend(/** @lends Segment# */{
 
 	setSelected: function(selected) {
 		this._setSelected(this._point, selected);
+	},
+
+	select: function() {
+		this.selected = true;
+	},
+	deselect: function() {
+		this.selected = false;
+	},
+	selectCurves: function() {
+		for (var key in this.curves) {
+			this.curves[key].selected = true;
+		}
+	},
+	deselectCurves: function() {
+		for (var key in this.curves) {
+			this.curves[key].selected = false;
+		}
 	},
 
 	/**

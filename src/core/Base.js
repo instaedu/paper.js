@@ -97,7 +97,7 @@ Base.inject(/** @lends Base# */{
 		 * Checks if two values or objects are equals to each other, by using
 		 * their equals() methods if available, and also comparing elements of
 		 * arrays and properties of objects.
-		 */ 
+		 */
 		equals: function(obj1, obj2) {
 			function checkKeys(o1, o2) {
 				for (var i in o1)
@@ -230,7 +230,7 @@ Base.inject(/** @lends Base# */{
 
 		/**
 		 * Allows using of Base.read() mechanism in combination with reading
-		 * named arguments form a passed property object literal. Calling 
+		 * named arguments form a passed property object literal. Calling
 		 * Base.readNamed() can read both from such named properties and normal
 		 * unnamed arguments through Base.read(). In use for example for the
 		 * various Path.Constructors.
@@ -248,7 +248,7 @@ Base.inject(/** @lends Base# */{
 		/**
 		 * @return the named value if the list provides an arguments object,
 		 * {@code null} if the named value is {@code null} or {@code undefined},
-		 * and {@code undefined} if there is no arguments object. 
+		 * and {@code undefined} if there is no arguments object.
 		 * If no name is provided, it returns the whole arguments object.
 		 */
 		getNamed: function(list, name) {
@@ -278,7 +278,7 @@ Base.inject(/** @lends Base# */{
 		},
 
 		/**
-		 * Serializes the passed object into a format that can be passed to 
+		 * Serializes the passed object into a format that can be passed to
 		 * JSON.stringify() for JSON serialization.
 		 */
 		serialize: function(obj, options, compact, dictionary) {
@@ -291,7 +291,7 @@ Base.inject(/** @lends Base# */{
 				// Create a simple dictionary object that handles all the
 				// storing and retrieving of dictionary definitions and
 				// references, e.g. for symbols and gradients. Items that want
-				// to support this need to define globally unique _id attribute. 
+				// to support this need to define globally unique _id attribute.
 				/**
 				 * @namespace
 				 * @private
@@ -406,7 +406,12 @@ Base.inject(/** @lends Base# */{
 		},
 
 		exportJSON: function(obj, options) {
-			return JSON.stringify(Base.serialize(obj, options));
+			options = options || {};
+			var serialized = Base.serialize(obj, options);
+			if (!!options.asObject) {
+				return serialized;
+			}
+			return JSON.stringify(serialized);
 		},
 
 		importJSON: function(json) {

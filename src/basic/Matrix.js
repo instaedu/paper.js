@@ -443,6 +443,33 @@ var Matrix = Base.extend(/** @lends Matrix# */{
 	},
 
 	/**
+	 * Instead of just having points on the corners of a bounding box,
+	 * this will add points halfway between each corner.
+	 * @param Rectangle
+	 * @returns Array
+	 */
+	_transformBorders: function(rect) {
+		var x1 = rect.x,
+			y1 = rect.y,
+			x2 = x1 + rect.width,
+			y2 = y1 + rect.height,
+			xmid = x1 + ((x2 - x1) / 2),
+			ymid = y1 + ((y2 - y1) / 2),
+			coords = [
+				x1, y1,
+				xmid, y1,
+				x2, y1,
+				x2, ymid,
+				x2, y2,
+				xmid, y2,
+				x1, y2,
+				x1, ymid
+			];
+
+		return this._transformCoordinates(coords, 0, coords, 0, coords.length / 2);
+	},
+
+	/**
 	 * Inverse transforms a point and returns the result.
 	 *
 	 * @param {Point} point The point to be transformed
@@ -616,7 +643,7 @@ var Matrix = Base.extend(/** @lends Matrix# */{
 	 * Inverts the transformation of the matrix. If the matrix is not invertible
 	 * (in which case {@link #isSingular()} returns true), {@code null } is
 	 * returned.
-	 * 
+	 *
 	 * @return {Matrix} The inverted matrix, or {@code null }, if the matrix is
 	 *         singular
 	 */

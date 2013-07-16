@@ -9,7 +9,7 @@
  *
  * All rights reserved.
  *
- * Date: Wed Jul 3 12:14:01 2013 -0700
+ * Date: Mon Jul 15 20:44:43 2013 -0600
  *
  ***
  *
@@ -489,7 +489,12 @@ Base.inject({
 		},
 
 		exportJSON: function(obj, options) {
-			return JSON.stringify(Base.serialize(obj, options));
+			options = options || {};
+			var serialized = Base.serialize(obj, options);
+			if (!!options.asObject) {
+				return serialized;
+			}
+			return JSON.stringify(serialized);
 		},
 
 		importJSON: function(json) {
@@ -1726,6 +1731,37 @@ var Rectangle = Base.extend({
 	scale: function(hor, ver) {
 		return this.expand(this.width * hor - this.width,
 				this.height * (ver === undefined ? hor : ver) - this.height);
+	},
+
+	hitEdge: function(point, options) {
+		var tolerance = options.tolerance || 0,
+			rightX = this.x + this.width,
+			bottomY = this.y + this.height,
+			insideWidth = point.x >= this.x && point.x <= rightX,
+			insideHeight = point.y >= this.y && point.y <= bottomY;
+
+		if (tolerance > 0) {
+			var topRange = (point.y >= this.y - tolerance && point.y <= this.y + tolerance && insideWidth),
+				rightRange = (point.x >= rightX - tolerance && point.x <= rightX + tolerance && insideHeight),
+				bottomRange = (point.y >= bottomY - tolerance && point.y <= bottomY + tolerance && insideWidth),
+				leftRange = (point.x >= this.x - tolerance && point.x <= this.x + tolerance && insideHeight);
+
+			if (topRange && leftRange) return 'top-left';
+			if (topRange && rightRange) return 'top-right';
+			if (topRange) return 'top';
+			if (bottomRange && leftRange) return 'bottom-left';
+			if (bottomRange && rightRange) return 'bottom-right';
+			if (bottomRange) return 'bottom';
+			if (rightRange) return 'right';
+			if (leftRange) return 'left';
+		} else {
+			if (point.y == this.y && insideWidth) return 'top';
+			if (point.x == rightX && insideHeight) return 'right';
+			if (point.y == bottomY && insideWidth) return 'bottom';
+			if (point.x == this.x && insideHeight) return 'left';
+		}
+
+		return null;
 	}
 }, new function() {
 	return Base.each([
@@ -2042,6 +2078,27 @@ var Matrix = Base.extend({
 			dest = new Rectangle();
 		return dest.set(min[0], min[1], max[0] - min[0], max[1] - min[1],
 				dontNotify);
+	},
+
+	_transformBorders: function(rect) {
+		var x1 = rect.x,
+			y1 = rect.y,
+			x2 = x1 + rect.width,
+			y2 = y1 + rect.height,
+			xmid = x1 + ((x2 - x1) / 2),
+			ymid = y1 + ((y2 - y1) / 2),
+			coords = [
+				x1, y1,
+				xmid, y1,
+				x2, y1,
+				x2, ymid,
+				x2, y2,
+				xmid, y2,
+				x1, y2,
+				x1, ymid
+			];
+
+		return this._transformCoordinates(coords, 0, coords, 0, coords.length / 2);
 	},
 
 	inverseTransform: function() {
@@ -2376,6 +2433,8 @@ var Project = PaperScopeItem.extend({
 		ctx.restore();
 
 		if (this._selectedItemCount > 0) {
+			var handleSize = this.options.handleSize || 4,
+				halfHandleSize = handleSize / 2;
 			ctx.save();
 			ctx.strokeWidth = 1;
 			for (var id in this._selectedItems) {
@@ -2387,20 +2446,20 @@ var Project = PaperScopeItem.extend({
 					ctx.strokeStyle = ctx.fillStyle = color
 							? color.toCanvasStyle(ctx) : '#009dec';
 					var mx = item._globalMatrix;
-					if (item._drawSelected)
+					if (item._itemSelected && item._drawSelected)
 						item._drawSelected(ctx, mx);
 					if (item._boundsSelected) {
-						var coords = mx._transformCorners(
+						var coords = mx._transformBorders(
 								item._getBounds('getBounds'));
 						ctx.beginPath();
-						for (var i = 0; i < 8; i++)
+						for (var i = 0; i < coords.length; i++)
 							ctx[i === 0 ? 'moveTo' : 'lineTo'](
 									coords[i], coords[++i]);
 						ctx.closePath();
 						ctx.stroke();
-						for (var i = 0; i < 8; i++) {
+						for (var i = 0; i < coords.length; i++) {
 							ctx.beginPath();
-							ctx.rect(coords[i] - 2, coords[++i] - 2, 4, 4);
+							ctx.rect(coords[i] - halfHandleSize, coords[++i] - halfHandleSize, handleSize, handleSize);
 							ctx.fill();
 						}
 					}
@@ -2490,7 +2549,11 @@ var Item = Base.extend(Callback, {
 		opacity: 1,
 		guide: false,
 		clipMask: false,
-		data: {}
+		data: {},
+		itemID: null,
+		clippable: true,
+		selectable: true,
+		itemType: ''
 	},
 
 	initialize: function Item(point) {
@@ -2706,6 +2769,10 @@ var Item = Base.extend(Callback, {
 	},
 
 	setSelected: function(selected ) {
+		if (!this.isSelectable()) {
+			return;
+		}
+
 		if (this._children && !arguments[1]) {
 			for (var i = 0, l = this._children.length; i < l; i++)
 				this._children[i].setSelected(selected);
@@ -2718,6 +2785,11 @@ var Item = Base.extend(Callback, {
 	},
 
 	_selected: false,
+
+	toggleSelected: function() {
+		this._boundsSelected = !this._boundsSelected;
+		this._itemSelected = !this._itemSelected;
+	},
 
 	isFullySelected: function() {
 		if (this._children && this._selected) {
@@ -2737,6 +2809,23 @@ var Item = Base.extend(Callback, {
 		this.setSelected(selected, true);
 	},
 
+	select: function() {
+		this.selected = true;
+	},
+	deselect: function() {
+		this.selected = false;
+	},
+	selectCurves: function() {
+		for (var key in this.curves) {
+			this.curves[key].selected = true;
+		}
+	},
+	deselectCurves: function() {
+		for (var key in this.curves) {
+			this.curves[key].selected = false;
+		}
+	},
+
 	isClipMask: function() {
 		return this._clipMask;
 	},
@@ -2744,10 +2833,7 @@ var Item = Base.extend(Callback, {
 	setClipMask: function(clipMask) {
 		if (this._clipMask != (clipMask = !!clipMask)) {
 			this._clipMask = clipMask;
-			if (clipMask) {
-				this.setFillColor(null);
-				this.setStrokeColor(null);
-			}
+
 			this._changed(33);
 			if (this._parent)
 				this._parent._changed(256);
@@ -2763,7 +2849,7 @@ var Item = Base.extend(Callback, {
 	},
 
 	setData: function(data) {
-		this._data = data;		
+		this._data = data;
 	},
 
 	getPosition: function() {
@@ -2786,6 +2872,32 @@ var Item = Base.extend(Callback, {
 		this._changed(5);
 	},
 
+	_itemSelected: true,
+
+	_selectable: true,
+
+	_clippable: true,
+
+	_itemID: null,
+
+	_itemType: '',
+
+	isSelectable: function() {
+		return this._selectable;
+	},
+
+	setSelectable: function(selectable) {
+		this._selectable = !!selectable;
+	},
+
+	isClippable: function() {
+		return this._clippable;
+	},
+
+	setClippable: function(clippable) {
+		this._clippable = !!clippable;
+	},
+
 	isEmpty: function() {
 		return this._children.length == 0;
 	}
@@ -2797,7 +2909,7 @@ var Item = Base.extend(Callback, {
 						? getter : getter && getter[name] || name, arguments[0]);
 			return name === 'getBounds'
 					? new LinkedRectangle(bounds.x, bounds.y, bounds.width,
-							bounds.height, this, 'setBounds') 
+							bounds.height, this, 'setBounds')
 					: bounds;
 		};
 	},
@@ -2960,12 +3072,26 @@ var Item = Base.extend(Callback, {
 			for (var i = 0, l = this._children.length; i < l; i++)
 				copy.addChild(this._children[i].clone(), true);
 		}
-		var keys = ['_locked', '_visible', '_blendMode', '_opacity',
-				'_clipMask', '_guide'];
-		for (var i = 0, l = keys.length; i < l; i++) {
-			var key = keys[i];
-			if (this.hasOwnProperty(key))
-				copy[key] = this[key];
+		for (var k in this._serializeFields) {
+			var key = '_' + k;
+			if (this.hasOwnProperty(key)) {
+				var val = this[key];
+				if (Array.isArray(val)) {
+					var newVal = [];
+					for (var i = 0; i < val.length; i++) {
+						var v = val[i];
+						if (typeof v == "object" && v.clone) {
+							newVal[i] = v.clone();
+						} else {
+							newVal[i] = v;
+						}
+					}
+					val = newVal;
+				} else if (typeof val == "object" && val.clone) {
+					val = val.clone();
+				}
+				copy[key] = val;
+			}
 		}
 		copy._matrix.initialize(this._matrix);
 		copy.setSelected(this._selected);
@@ -3016,47 +3142,25 @@ var Item = Base.extend(Callback, {
 	},
 
 	hitTest: function(point, options) {
-		point = Point.read(arguments);
-		options = HitResult.getOptions(Base.read(arguments));
-
 		if (this._locked || !this._visible || this._guide && !options.guides)
 			return null;
+
+		point = Point.read(arguments);
+		options = HitResult.getOptions(Base.read(arguments));
 
 		if (!this._children && !this.getRoughBounds()
 				.expand(options.tolerance)._containsPoint(point))
 			return null;
 		point = this._matrix._inverseTransform(point);
 
-		var that = this,
-			res;
-		function checkBounds(type, part) {
-			var pt = bounds['get' + part]();
-			if (point.getDistance(pt) < options.tolerance)
-				return new HitResult(type, that,
-						{ name: Base.hyphenate(part), point: pt });
-		}
-
-		if ((options.center || options.bounds) &&
-				!(this instanceof Layer && !this._parent)) {
-			var bounds = this._getBounds('getBounds');
-			if (options.center)
-				res = checkBounds('center', 'Center');
-			if (!res && options.bounds) {
-				var points = [
-					'TopLeft', 'TopRight', 'BottomLeft', 'BottomRight',
-					'LeftCenter', 'TopCenter', 'RightCenter', 'BottomCenter'
-				];
-				for (var i = 0; i < 8 && !res; i++)
-					res = checkBounds('bounds', points[i]);
-			}
-		}
-
-		if ((res || (res = this._children || !(options.guides && !this._guide
+		var res = this._hitTestSelf(point, options)
+		if (res || (res = this._children || !(options.guides && !this._guide
 				|| options.selected && !this._selected)
-					? this._hitTest(point, options) : null))
+					? this._hitTest(point, options) : null)
 				&& res.point) {
-			res.point = that._matrix.transform(res.point);
+			res.point = this._matrix.transform(res.point);
 		}
+
 		return res;
 	},
 
@@ -3068,6 +3172,52 @@ var Item = Base.extend(Callback, {
 		} else if (this.hasFill() && this._contains(point)) {
 			return new HitResult('fill', this);
 		}
+	},
+
+	_hitTestSelf: function(point, options) {
+		var that = this,
+			res;
+		function checkBounds(type, part) {
+			var pt = bounds['get' + part]();
+			if (point.getDistance(pt) < options.tolerance)
+				return new HitResult(type, that,
+						{ name: Base.hyphenate(part), point: pt });
+		}
+
+		if ((options.center || options.bounds) &&
+				!(this instanceof Layer && !this._parent)) {
+			var bounds = that._getBounds('getBounds');
+			if (options.center)
+				res = checkBounds('center', 'Center');
+			if (!res && options.bounds) {
+				var points = [
+					'TopLeft', 'TopRight', 'BottomLeft', 'BottomRight',
+					'LeftCenter', 'TopCenter', 'RightCenter', 'BottomCenter'
+				];
+				for (var i = 0; i < points.length && !res; i++)
+					res = checkBounds('bounds', points[i]);
+			}
+		}
+
+		if (!res && !!options.boundingBox) {
+			var bounds = this.getBounds(),
+				edge = bounds.hitEdge(point, options);
+			if (!!edge) {
+				res = new HitResult('boundingEdge', this, {
+					name: edge, point: point
+				});
+			} else {
+				var newBounds = bounds.clone();
+				newBounds.expand(options.tolerance);
+				if (newBounds.contains(point)) {
+					res = new HitResult('boundingBox', this, {
+						name: 'inside-box', point: point
+					});
+				}
+			}
+		}
+
+		return res;
 	},
 
 	importJSON: function(json) {
@@ -3438,8 +3588,6 @@ var Item = Base.extend(Callback, {
 		this._draw(ctx, param);
 		ctx.restore();
 		transforms.pop();
-		if (param.clip)
-			ctx.clip();
 		if (!direct) {
 			BlendMode.process(blendMode, ctx, mainCtx, opacity,
 					itemOffset.subtract(prevOffset));
@@ -3483,6 +3631,7 @@ var Group = Item.extend({
 		Item.call(this);
 		this._children = [];
 		this._namedChildren = {};
+		this.compositing = 'source-in';
 		if (arg && !this._set(arg))
 			this.addChildren(Array.isArray(arg) ? arg : arguments);
 	},
@@ -3494,19 +3643,20 @@ var Group = Item.extend({
 			this.applyMatrix();
 		}
 		if (flags & (2 | 256)) {
-			delete this._clipItem;
+			delete this._clipItems;
 		}
 	},
 
-	_getClipItem: function() {
-		if (this._clipItem !== undefined)
-			return this._clipItem;
+	_getClipItems: function() {
+		this._clipItems = [];
 		for (var i = 0, l = this._children.length; i < l; i++) {
 			var child = this._children[i];
-			if (child._clipMask)
-				return this._clipItem = child;
+			if (child._clipMask) {
+				this._clipItems.push(child);
+			}
 		}
-		return this._clipItem = null;
+
+		return this._clipItems;
 	},
 
 	getTransformContent: function() {
@@ -3520,7 +3670,7 @@ var Group = Item.extend({
 	},
 
 	isClipped: function() {
-		return !!this._getClipItem();
+		return this._getClipItems().length > 0;
 	},
 
 	setClipped: function(clipped) {
@@ -3530,15 +3680,51 @@ var Group = Item.extend({
 	},
 
 	_draw: function(ctx, param) {
-		var clipItem = param.clipItem = this._getClipItem();
-		if (clipItem)
-			clipItem.draw(ctx, param.extend({ clip: true }));
-		for (var i = 0, l = this._children.length; i < l; i++) {
-			var item = this._children[i];
-			if (item !== clipItem)
-				item.draw(ctx, param);
+		var clipItems = this._getClipItems(),
+			hasClipItems = clipItems.length > 0;
+		if (hasClipItems) {
+			var bounds = this.getStrokeBounds();
+			if (!bounds.width || !bounds.height) {
+				return;
+			}
+			param.offset = bounds.getTopLeft().floor();
 		}
-		param.clipItem = null;
+
+		var unclippable = [];
+		for (var i = 0; i < this._children.length; i++) {
+			var item = this._children[i];
+			if (item.isClipMask()) {
+				var origComposite = ctx.globalCompositeOperation;
+				ctx.globalCompositeOperation = this.compositing;
+				item.draw(ctx, param);
+				ctx.globalCompositeOperation = origComposite;
+			} else if (hasClipItems && !item.isClippable()) {
+				unclippable.push(item);
+			} else {
+				item.draw(ctx, param);
+			}
+		}
+
+		for (var key in unclippable) {
+			unclippable[key].draw(ctx, param);
+		}
+	},
+
+	_hitTestSelf: function() {
+		return null;
+	},
+
+	_serialize: function _serialize(options, dictionary) {
+		options = options || {};
+		if (!!options.excludeChildren) {
+			delete this._serializeFields.children;
+		}
+		var serialized = _serialize.base.apply(this, arguments);
+		if (!!options.excludeChildren) {
+			this._serializeFields.children = [];
+		}
+
+		return serialized;
 	}
 });
 
@@ -3882,7 +4068,7 @@ var Raster = Item.extend({
 		if (this._canvas)
 			CanvasProvider.release(this._canvas);
 		this._image = image;
-		this._size = new Size(image.naturalWidth, image.naturalHeight);
+		this._size = new Size(image.width, image.height);
 		this._canvas = null;
 		this._context = null;
 		this._changed(5);
@@ -3895,20 +4081,22 @@ var Raster = Item.extend({
 	setSource: function(src) {
 		var that = this,
 			image = document.getElementById(src) || new Image();
+
 		function loaded() {
 			that.fire('load');
 			if (that._project.view)
 				that._project.view.draw(true);
 		}
-		DomEvent.add(image, {
-			load: function() {
-				that.setImage(image);
-				loaded();
-			}
-		});
+
 		if (image.width && image.height) {
 			setTimeout(loaded, 0);
 		} else if (!image.src) {
+			DomEvent.add(image, {
+				load: function() {
+					that.setImage(image);
+					loaded();
+				}
+			});
 			image.src = src;
 		}
 		this.setImage(image);
@@ -4287,6 +4475,23 @@ var Segment = Base.extend({
 
 	setSelected: function(selected) {
 		this._setSelected(this._point, selected);
+	},
+
+	select: function() {
+		this.selected = true;
+	},
+	deselect: function() {
+		this.selected = false;
+	},
+	selectCurves: function() {
+		for (var key in this.curves) {
+			this.curves[key].selected = true;
+		}
+	},
+	deselectCurves: function() {
+		for (var key in this.curves) {
+			this.curves[key].selected = false;
+		}
 	},
 
 	getIndex: function() {
@@ -5416,12 +5621,12 @@ var CurveLocation = Base.extend({
 
 	divide: function() {
 		var curve = this.getCurve(true);
-		return curve && curve.divide(this.getParameter(true));
+		return curve && curve.divide(this.getParameter(true), true);
 	},
 
 	split: function() {
 		var curve = this.getCurve(true);
-		return curve && curve.split(this.getParameter(true));
+		return curve && curve.split(this.getParameter(true), true);
 	},
 
 	toString: function() {
@@ -5922,7 +6127,7 @@ var Path = PathItem.extend({
 		var curves = this.getCurves();
 		if (index >= 0 && index < curves.length) {
 			if (parameter > 0) {
-				curves[index++].divide(parameter);
+				curves[index++].divide(parameter, true);
 			}
 			var segs = this.removeSegments(index, this._segments.length, true),
 				path;
@@ -6202,7 +6407,7 @@ var Path = PathItem.extend({
 				area = [];
 				if (closed || segment._index > 0
 						&& segment._index < segments.length - 1) {
-					if (join !== 'round' && (segment._handleIn.isZero() 
+					if (join !== 'round' && (segment._handleIn.isZero()
 							|| segment._handleOut.isZero()))
 						Path._addSquareJoin(segment, join, radius, miterLimit,
 								addAreaPoint, true);
@@ -6766,7 +6971,7 @@ statics: {
 				break;
 			case 'butt':
 			case 'square':
-				Path._addSquareCap(segment, cap, radius, add); 
+				Path._addSquareCap(segment, cap, radius, add);
 				break;
 			}
 		}
@@ -6783,8 +6988,11 @@ statics: {
 	},
 
 	_addSquareJoin: function(segment, join, radius, miterLimit, addPoint, area) {
-		var curve2 = segment.getCurve(),
-			curve1 = curve2.getPrevious(),
+		var curve2 = segment.getCurve();
+		if (!curve2) {
+			return;
+		}
+		var curve1 = curve2.getPrevious(),
 			point = curve2.getPointAt(0, true),
 			normal1 = curve1.getNormalAt(1, true),
 			normal2 = curve2.getNormalAt(0, true),
@@ -6816,8 +7024,12 @@ statics: {
 
 	_addSquareCap: function(segment, cap, radius, addPoint, area) {
 		var point = segment._point,
-			loc = segment.getLocation(),
-			normal = loc.getNormal().normalize(radius);
+			loc = segment.getLocation();
+
+		if (!loc) {
+			return;
+		}
+		var normal = loc.getNormal().normalize(radius);
 		if (area) {
 			addPoint(point.subtract(normal));
 			addPoint(point.add(normal));
@@ -7747,6 +7959,158 @@ var PointText = TextItem.extend({
 						count ? - 0.75 * leading : 0,
 						width, count * leading);
 			return matrix ? matrix._transformBounds(bounds, bounds) : bounds;
+		}
+	};
+});
+
+var AreaText = Path.extend({
+	_class: 'AreaText',
+	_serializeFields: {
+		text: null
+	},
+	initialize: function AreaText(path, createText) {
+		this._text = null;
+		if (path && Base.isPlainObject(path)) {
+			Path.call(this, null);
+			this._set(path);
+			if (!this._text && !!createText) {
+				this.setText();
+			} else if (!!this._text) {
+				this.setText(this._text);
+			}
+
+			for (var key in this.style._defaults) {
+				this.style[key] = (key in path)
+					? path[key]
+					: this.style._defaults[key];
+			}
+
+			this.setColorStyle(
+				this.style.fillColor,
+				this.style.strokeColor
+			);
+			this.setFontStyle(
+				parseInt(this.fontSize),
+				this.leading,
+				this.font
+			);
+		} else {
+			Path.call(this, path);
+			if (!!createText) {
+				this.setText();
+			}
+		}
+	},
+
+	setText: function(text) {
+		this._text = text || new TextItem(this.bounds.topLeft);
+		this._text.remove();
+	},
+
+	getText: function() {
+		return this._text;
+	},
+
+	_clone: function() {
+		var clone = Path.prototype._clone.apply(this, arguments);
+		clone._text && clone._text.remove();
+		return clone;
+	},
+
+	clone: function() {
+		var clone = this._clone(new AreaText(this._segments));
+		clone._closed = this._closed;
+		if (this._clockwise !== undefined)
+			clone._clockwise = this._clockwise;
+
+		clone.setText(this.text.clone());
+		clone.cssFillColor = this.cssFillColor;
+		clone.cssStrokeColor = this.cssStrokeColor;
+		return clone;
+	},
+
+	_draw: function(ctx) {
+		if (!this.text || !this.text._content)
+			return;
+		this._setStyles(ctx);
+		var style = this._style,
+			lines = this.text._lines,
+			leading = style.getLeading(),
+			maxWidth = this.bounds.width,
+			maxHeight = this.bounds.height,
+			currentHeight = 0;
+
+		if (maxWidth == 0 || maxHeight == 0) {
+			return;
+		}
+
+		ctx.font = style.getFontStyle();
+		ctx.textAlign = style.getJustification();
+		ctx.translate(
+			this.bounds.topLeft.x + 1,
+			this.bounds.topLeft.y + parseInt(this.fontSize || 0) - 1
+		);
+
+		var testLine = function(words, separator) {
+			var line = [];
+			for (var n = 0; n < words.length; n++) {
+				line.push(words[n]);
+				var metrics = ctx.measureText(line.join(separator));
+				if (metrics.width > maxWidth) {
+					var word = line.pop();
+					if (line.length > 0) {
+						writeLine(line.join(separator));
+						n--;
+					} else {
+						line = testLine(word, '');
+						writeLine(line.join(''));
+					}
+					line = [];
+				}
+			}
+			return line;
+		};
+
+		var writeLine = function(line) {
+			if (currentHeight + leading > maxHeight) {
+				return;
+			}
+
+			if (style.getFillColor()) {
+				ctx.fillText(line, 0, 0);
+			}
+			if (style.getStrokeColor()) {
+				ctx.strokeText(line, 0, 0);
+			}
+			ctx.translate(0, leading);
+			currentHeight += leading;
+		};
+
+		for (var i = 0, l = lines.length; i < l; i++) {
+			var words = lines[i].split(' ');
+
+			var line = testLine(words, ' ');
+			if (line.length > 0) {
+				writeLine(line.join(' '));
+			}
+		}
+	}
+}, new function() {
+	return {
+		setColorStyle: function(color, strokeColor) {
+			this.style.fillColor = color;
+			this.style.strokeColor = strokeColor;
+			this.cssFillColor = color;
+			this.cssStrokeColor = color;
+		},
+		setFontStyle: function(fontSize, leading, fontFamily) {
+			leading = leading || fontSize * 1.2;
+
+			this.fontSize = fontSize + 'px';
+			this.leading = leading;
+			if (!!fontFamily) {
+				this.font = fontFamily;
+			}
 		}
 	};
 });
@@ -8917,8 +9281,14 @@ var View = Base.extend(Callback, {
 			};
 			DomEvent.add(window, this._windowHandlers);
 		} else {
-			size = new Size(parseInt(element.getAttribute('width'), 10),
-						parseInt(element.getAttribute('height'), 10));
+			var style = DomElement.getStyles(element),
+				width = style.width,
+				height = style.height;
+
+			size = new Size(
+				parseInt(width, 10),
+				parseInt(height, 10)
+			);
 			if (size.isNaN())
 				size = DomElement.getSize(element);
 		}

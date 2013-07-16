@@ -175,7 +175,7 @@ var Project = PaperScopeItem.extend(/** @lends Project# */{
 
 	// DOCS: Project#options
 	/**
-	 * <b>options.handleSize:</b> 
+	 * <b>options.handleSize:</b>
 	 * <b>options.hitTolerance:</b>
 	 *
 	 * @name Project#options
@@ -215,10 +215,11 @@ var Project = PaperScopeItem.extend(/** @lends Project# */{
 			this._selectedItems[i].setSelected(false);
 	},
 
+
 	/**
 	 * Perform a hit test on the items contained within the project at the
 	 * location of the specified point.
-	 * 
+	 *
 	 * The optional options object allows you to control the specifics of the
 	 * hit test and may contain a combination of the following values:
 	 * <b>options.tolerance:</b> {@code Number} - The tolerance of the hit test
@@ -271,7 +272,7 @@ var Project = PaperScopeItem.extend(/** @lends Project# */{
 	 *
 	 * @name Project#exportJSON
 	 * @function
-	 * @param {Object} [options={ precision: 5 }] the serialization options 
+	 * @param {Object} [options={ precision: 5 }] the serialization options
 	 * @return {String} the exported JSON data
 	 */
 
@@ -350,6 +351,8 @@ var Project = PaperScopeItem.extend(/** @lends Project# */{
 
 		// Draw the selection of the selected items in the project:
 		if (this._selectedItemCount > 0) {
+			var handleSize = this.options.handleSize || 4,
+				halfHandleSize = handleSize / 2;
 			ctx.save();
 			ctx.strokeWidth = 1;
 			for (var id in this._selectedItems) {
@@ -363,25 +366,25 @@ var Project = PaperScopeItem.extend(/** @lends Project# */{
 					ctx.strokeStyle = ctx.fillStyle = color
 							? color.toCanvasStyle(ctx) : '#009dec';
 					var mx = item._globalMatrix;
-					if (item._drawSelected)
+					if (item._itemSelected && item._drawSelected)
 						item._drawSelected(ctx, mx);
 					if (item._boundsSelected) {
 						// We need to call the internal _getBounds, to get non-
 						// transformed bounds.
 						// TODO: Implement caching for these too!
-						var coords = mx._transformCorners(
+						var coords = mx._transformBorders(
 								item._getBounds('getBounds'));
 						// Now draw a rectangle that connects the transformed
 						// bounds corners, and draw the corners.
 						ctx.beginPath();
-						for (var i = 0; i < 8; i++)
+						for (var i = 0; i < coords.length; i++)
 							ctx[i === 0 ? 'moveTo' : 'lineTo'](
 									coords[i], coords[++i]);
 						ctx.closePath();
 						ctx.stroke();
-						for (var i = 0; i < 8; i++) {
+						for (var i = 0; i < coords.length; i++) {
 							ctx.beginPath();
-							ctx.rect(coords[i] - 2, coords[++i] - 2, 4, 4);
+							ctx.rect(coords[i] - halfHandleSize, coords[++i] - halfHandleSize, handleSize, handleSize);
 							ctx.fill();
 						}
 					}
