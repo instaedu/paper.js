@@ -358,7 +358,7 @@ var Color = Base.extend(new function() {
 		 * an alternative to providing a gradient object<br>
 		 *
 		 * @name Color#initialize
-		 * @param {Object} object an object describing the components and 
+		 * @param {Object} object an object describing the components and
 		 *        properties of the color.
 		 *
 		 * @example {@paperscript}
@@ -390,7 +390,7 @@ var Color = Base.extend(new function() {
  		 * // the path and to position the gradient color:
  		 * var topLeft = view.center - [80, 80];
  		 * var bottomRight = view.center + [80, 80];
-  		 * 
+  		 *
  		 * var path = new Path.Rectangle({
  		 * 	topLeft: topLeft,
  		 * 	bottomRight: bottomRight,
@@ -783,6 +783,34 @@ var Color = Base.extend(new function() {
 					+ components.join(',') + ')';
 		},
 
+		toHex: function(shorten) {
+			var components = this._convert('rgb');
+			components = [
+				Math.round(components[0] * 255).toString(16),
+				Math.round(components[1] * 255).toString(16),
+				Math.round(components[2] * 255).toString(16)
+			];
+
+			var hex = '';
+			for (var i = 0; i < components.length; i++) {
+				var c = components[i];
+				hex += c;
+				if (c.length == 1) {
+					hex += c;
+				}
+			}
+
+			if (shorten
+				&& hex[0] == hex[1]
+				&& hex[2] == hex[3]
+				&& hex[4] == hex[5]
+			) {
+				hex = hex[0] + hex[2] + hex[4];
+			}
+
+			return hex;
+		},
+
 		toCanvasStyle: function(ctx) {
 			if (this._canvasStyle)
 				return this._canvasStyle;
@@ -1006,7 +1034,7 @@ var Color = Base.extend(new function() {
 		 * 	center: view.center,
 		 * 	radius: view.bounds.height * 0.4
 		 * });
-		 * 
+		 *
 		 * path.fillColor = {
 		 * 	gradient: {
 		 * 		stops: ['yellow', 'red', 'black'],
@@ -1015,7 +1043,7 @@ var Color = Base.extend(new function() {
 		 * 	origin: path.position,
 		 * 	destination: path.bounds.rightCenter
 		 * };
-		 * 
+		 *
 		 * function onMouseMove(event) {
 		 * 	// Set the origin highlight of the path's gradient color
 		 * 	// to the position of the mouse:
