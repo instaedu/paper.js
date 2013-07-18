@@ -1319,8 +1319,9 @@ var Item = Base.extend(Callback, /** @lends Item# */{
 		// in the same parent, by passing true for the unique parameter.
 		if (this._name)
 			copy.setName(this._name, true);
-		//copy._itemType = this._itemType;
-        //copy._itemID = this._itemID;
+
+		copy._boundsSelected = this._boundsSelected;
+		copy._itemSelected = this._itemSelected;
 		return copy;
 	},
 
