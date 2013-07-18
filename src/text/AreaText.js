@@ -10,14 +10,6 @@ var AreaText = Path.extend({
 			this._set(path);
 			this.setText(this._text);
 
-			// Use default styles
-			var text = path.text || {};
-			for (var key in this._text.style._defaults) {
-				this._text.style[key] = (key in text)
-					? text[key]
-					: this._text.style._defaults[key];
-			}
-
 			this.setColorStyle();
 			this.setFontStyle();
 		} else {
