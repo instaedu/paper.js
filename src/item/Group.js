@@ -201,7 +201,8 @@ var Group = Item.extend(/** @lends Group# */{
 	 */
 	_draw: function(ctx, param) {
 		var clipItems = this._getClipItems(),
-			hasClipItems = clipItems.length > 0;
+			hasClipItems = clipItems.length > 0,
+			origOffset = param.offset;
 		if (hasClipItems) {
 			var bounds = this.getStrokeBounds();
 			if (!bounds.width || !bounds.height) {
@@ -229,6 +230,11 @@ var Group = Item.extend(/** @lends Group# */{
 
 		for (var key in unclippable) {
 			unclippable[key].draw(ctx, param);
+		}
+
+		// Restore our original offset before finishing
+		if (hasClipItems) {
+			param.offset = origOffset;
 		}
 	},
 
