@@ -3060,7 +3060,11 @@ var Item = Base.extend(Callback, /** @lends Item# */{
 					// If native blending is possible, see if the item allows it
 					|| (nativeBlend || opacity < 1) && this._canComposite(),
 			mainCtx, itemOffset, prevOffset;
-		if (!direct) {
+
+		if (this.compositing) {
+			mainCtx = ctx;
+			ctx = CanvasProvider.getContext(ctx.canvas.width, ctx.canvas.height);
+		} else if (!direct) {
 			// Apply the paren't global matrix to the calculation of correct
 			// bounds.
 			var bounds = this.getStrokeBounds(parentMatrix);
@@ -3078,6 +3082,7 @@ var Item = Base.extend(Callback, /** @lends Item# */{
 			ctx = CanvasProvider.getContext(
 					bounds.getSize().ceil().add(new Size(1, 1)));
 		}
+
 		ctx.save();
 		// If drawing directly, handle opacity and native blending now,
 		// otherwise we will do it later when the temporary canvas is composited.
@@ -3100,7 +3105,14 @@ var Item = Base.extend(Callback, /** @lends Item# */{
 		ctx.restore();
 		transforms.pop();
 		// If a temporary canvas was created, composite it onto the main canvas:
-		if (!direct) {
+		if (this.compositing) {
+			// More or less from BlendMode#process
+			mainCtx.save();
+			mainCtx.setTransform(1, 0, 0, 1, 0, 0);
+			mainCtx.drawImage(ctx.canvas, param.offset.x, param.offset.y);
+			mainCtx.restore();
+			CanvasProvider.release(ctx);
+		} else if (!direct) {
 			// Use BlendMode.process even for processing normal blendMode with
 			// opacity.
 			BlendMode.process(blendMode, ctx, mainCtx, opacity,
