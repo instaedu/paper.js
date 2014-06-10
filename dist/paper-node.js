@@ -9,7 +9,7 @@
  *
  * All rights reserved.
  *
- * Date: Mon Jul 15 20:44:43 2013 -0600
+ * Date: Mon Jun 9 17:57:54 2014 -0600
  *
  ***
  *
@@ -105,7 +105,8 @@ var Base = new function() {
 				if (isFunc && beans && val.length === 0
 						&& (bean = name.match(/^(get|is)(([A-Z])(.*))$/)))
 					beans.push([ bean[3].toLowerCase() + bean[4], bean[2] ]);
-				if (!res || isFunc || !res.get)
+				if (!res || isFunc || !res.get || typeof res.get !== 'function'
+						|| res.get.length !== 0)
 					res = { value: res, writable: true };
 				if ((describe(dest, name)
 						|| { configurable: true }).configurable) {
@@ -128,15 +129,14 @@ var Base = new function() {
 					field(name, null, true, generics);
 			field('toString');
 			field('valueOf');
-			for (var i = 0, l = beans && beans.length; i < l; i++)
-				try {
-					var bean = beans[i],
-						part = bean[1];
-					field(bean[0], {
-						get: dest['get' + part] || dest['is' + part],
-						set: dest['set' + part]
-					}, true);
-				} catch (e) {}
+			for (var i = 0, l = beans.length; i < l; i++) {
+				var bean = beans[i],
+					part = bean[1];
+				field(bean[0], {
+					get: dest['get' + part] || dest['is' + part],
+					set: dest['set' + part]
+				}, true);
+			}
 		}
 		return dest;
 	}
@@ -224,10 +224,6 @@ var Base = new function() {
 				var ctor = obj != null && obj.constructor;
 				return ctor && (ctor === Object || ctor === Base
 						|| ctor.name === 'Object');
-			},
-
-			check: function(obj) {
-				return !!(obj || obj === 0);
 			},
 
 			pick: function() {
@@ -3097,6 +3093,9 @@ var Item = Base.extend(Callback, {
 		copy.setSelected(this._selected);
 		if (this._name)
 			copy.setName(this._name, true);
+
+		copy._boundsSelected = this._boundsSelected;
+		copy._itemSelected = this._itemSelected;
 		return copy;
 	},
 
@@ -3564,7 +3563,11 @@ var Item = Base.extend(Callback, {
 			direct = blendMode === 'normal' && opacity === 1
 					|| (nativeBlend || opacity < 1) && this._canComposite(),
 			mainCtx, itemOffset, prevOffset;
-		if (!direct) {
+
+		if (this.compositing) {
+			mainCtx = ctx;
+			ctx = CanvasProvider.getContext(ctx.canvas.width, ctx.canvas.height);
+		} else if (!direct) {
 			var bounds = this.getStrokeBounds(parentMatrix);
 			if (!bounds.width || !bounds.height)
 				return;
@@ -3574,6 +3577,7 @@ var Item = Base.extend(Callback, {
 			ctx = CanvasProvider.getContext(
 					bounds.getSize().ceil().add(new Size(1, 1)));
 		}
+
 		ctx.save();
 		if (direct) {
 			ctx.globalAlpha = opacity;
@@ -3588,7 +3592,13 @@ var Item = Base.extend(Callback, {
 		this._draw(ctx, param);
 		ctx.restore();
 		transforms.pop();
-		if (!direct) {
+		if (this.compositing) {
+			mainCtx.save();
+			mainCtx.setTransform(1, 0, 0, 1, 0, 0);
+			mainCtx.drawImage(ctx.canvas, param.offset.x, param.offset.y);
+			mainCtx.restore();
+			CanvasProvider.release(ctx);
+		} else if (!direct) {
 			BlendMode.process(blendMode, ctx, mainCtx, opacity,
 					itemOffset.subtract(prevOffset));
 			CanvasProvider.release(ctx);
@@ -3681,7 +3691,8 @@ var Group = Item.extend({
 
 	_draw: function(ctx, param) {
 		var clipItems = this._getClipItems(),
-			hasClipItems = clipItems.length > 0;
+			hasClipItems = clipItems.length > 0,
+			origOffset = param.offset;
 		if (hasClipItems) {
 			var bounds = this.getStrokeBounds();
 			if (!bounds.width || !bounds.height) {
@@ -3707,6 +3718,10 @@ var Group = Item.extend({
 
 		for (var key in unclippable) {
 			unclippable[key].draw(ctx, param);
+		}
+
+		if (hasClipItems) {
+			param.offset = origOffset;
 		}
 	},
 
@@ -7953,43 +7968,26 @@ var AreaText = Path.extend({
 	_serializeFields: {
 		text: null
 	},
-	initialize: function AreaText(path, createText) {
+	initialize: function AreaText(path) {
 		this._text = null;
 		if (path && Base.isPlainObject(path)) {
 			Path.call(this, null);
 			this._set(path);
-			if (!this._text && !!createText) {
-				this.setText();
-			} else if (!!this._text) {
-				this.setText(this._text);
-			}
+			this.setText(this._text);
 
-			for (var key in this.style._defaults) {
-				this.style[key] = (key in path)
-					? path[key]
-					: this.style._defaults[key];
-			}
-
-			this.setColorStyle(
-				this.style.fillColor,
-				this.style.strokeColor
-			);
-			this.setFontStyle(
-				parseInt(this.fontSize),
-				this.leading,
-				this.font
-			);
+			this.setColorStyle();
+			this.setFontStyle();
 		} else {
 			Path.call(this, path);
-			if (!!createText) {
-				this.setText();
-			}
+			this.setText();
 		}
 	},
 
 	setText: function(text) {
 		this._text = text || new TextItem(this.bounds.topLeft);
 		this._text.remove();
+		this.setColorStyle();
+		this.setFontStyle();
 	},
 
 	getText: function() {
@@ -8017,8 +8015,8 @@ var AreaText = Path.extend({
 	_draw: function(ctx) {
 		if (!this.text || !this.text._content)
 			return;
-		this._setStyles(ctx);
-		var style = this._style,
+		this.text._setStyles(ctx);
+		var style = this.text._style,
 			lines = this.text._lines,
 			leading = style.getLeading(),
 			maxWidth = this.bounds.width,
@@ -8033,7 +8031,7 @@ var AreaText = Path.extend({
 		ctx.textAlign = style.getJustification();
 		ctx.translate(
 			this.bounds.topLeft.x + 1,
-			this.bounds.topLeft.y + parseInt(this.fontSize || 0) - 1
+			this.bounds.topLeft.y + parseInt(this.text.fontSize || 0) - 1
 		);
 
 		var testLine = function(words, separator) {
@@ -8083,18 +8081,29 @@ var AreaText = Path.extend({
 }, new function() {
 	return {
 		setColorStyle: function(color, strokeColor) {
-			this.style.fillColor = color;
-			this.style.strokeColor = strokeColor;
+			if (arguments.length == 0) {
+				color = this._text.fillColor;
+				strokeColor = this._text.strokeColor;
+			}
+
+			this._text.fillColor = color;
+			this._text.strokeColor = strokeColor;
 			this.cssFillColor = color;
 			this.cssStrokeColor = color;
 		},
 		setFontStyle: function(fontSize, leading, fontFamily) {
-			leading = leading || fontSize * 1.2;
+			if (arguments.length == 0) {
+				fontSize = parseInt(this._text.fontSize);
+				leading = this._text.leading;
+				fontFamily = this._text.font;
+			} else {
+				leading = leading || fontSize * 1.2;
+			}
 
-			this.fontSize = fontSize + 'px';
-			this.leading = leading;
+			this._text.fontSize = fontSize + 'px';
+			this._text.leading = leading;
 			if (!!fontFamily) {
-				this.font = fontFamily;
+				this._text.font = fontFamily;
 			}
 		}
 	};
@@ -8531,6 +8540,34 @@ var Color = Base.extend(new function() {
 				components.push(alpha);
 			return (components.length == 4 ? 'rgba(' : 'rgb(')
 					+ components.join(',') + ')';
+		},
+
+		toHex: function(shorten) {
+			var components = this._convert('rgb');
+			components = [
+				Math.round(components[0] * 255).toString(16),
+				Math.round(components[1] * 255).toString(16),
+				Math.round(components[2] * 255).toString(16)
+			];
+
+			var hex = '';
+			for (var i = 0; i < components.length; i++) {
+				var c = components[i];
+				hex += c;
+				if (c.length == 1) {
+					hex += c;
+				}
+			}
+
+			if (shorten
+				&& hex[0] == hex[1]
+				&& hex[2] == hex[3]
+				&& hex[4] == hex[5]
+			) {
+				hex = hex[0] + hex[2] + hex[4];
+			}
+
+			return hex;
 		},
 
 		toCanvasStyle: function(ctx) {
