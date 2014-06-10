@@ -653,8 +653,11 @@ var View = Base.extend(Callback, /** @lends View# */{
 		if (tool = view._scope._tool) {
 			// If there's no onMouseDrag, fire onMouseMove while dragging too.
 			if (tool._onHandleEvent(dragging && tool.responds('mousedrag')
-					? 'mousedrag' : 'mousemove', point, event))
-				DomEvent.stop(event);
+					? 'mousedrag' : 'mousemove', point, event)) {
+				if (view._element === event.target) {
+					DomEvent.stop(event);
+				}
+			}
 		}
 		view.draw(true);
 	}

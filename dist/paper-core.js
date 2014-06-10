@@ -9,7 +9,7 @@
  *
  * All rights reserved.
  *
- * Date: Mon Jun 9 17:57:54 2014 -0600
+ * Date: Tue Jun 10 08:00:59 2014 +0800
  *
  ***
  *
@@ -9610,8 +9610,11 @@ var View = Base.extend(Callback, {
 			view._onMouseMove(event, point);
 		if (tool = view._scope._tool) {
 			if (tool._onHandleEvent(dragging && tool.responds('mousedrag')
-					? 'mousedrag' : 'mousemove', point, event))
-				DomEvent.stop(event);
+					? 'mousedrag' : 'mousemove', point, event)) {
+				if (view._element === event.target) {
+					DomEvent.stop(event);
+				}
+			}
 		}
 		view.draw(true);
 	}
